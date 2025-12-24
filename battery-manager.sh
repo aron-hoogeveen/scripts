@@ -8,9 +8,10 @@
 # low battery levels have been reached and shuts down the system when a critically low battery level
 # has been reached.
 #
-# This script should be in a global folder with read/execution for all users, but write only for root user. For example in /usr/local/bin
+# This script should be in a global folder with read/execution for all users, but write only for root user.
 #
 # TODO currently only works if you add this to the crontabs of all users who will use graphical sessions. Would be best if it runs on root or special user and then shows the notifications for all users that currently have a graphical session active. Then the laptop will shutoff also when noone is yet logged in.
+# TODO reset notifications when a charger is connected. Want the notification gone as soon as possible, therefore it might be nice to run this script via a UDEV rule and by using a switch `battery-manager.sh --clear-notification` or whatever.
 ####################################################################################################
 
 # check if commands exist
@@ -30,7 +31,7 @@ charge_now="$batpath/charge_now"
 charge_full="$batpath/charge_full"
 
 # tmp file
-tmp_file_path=/dev/shm/battery-manager-notified
+tmp_file_path=/tmp/battery-manager-notified
 
 # notify-send settings
 not_urg='critical'
@@ -72,7 +73,7 @@ do_notify()
 
             case $not_ret in
                 "cancel_shutdown")
-                    shutdown -c
+                    systemctl poweroff --when=cancel
                     break
                     ;;
                 *)
@@ -90,7 +91,7 @@ do_notify()
 
 # Check most critical exceeded threshold
 if [ $batlevel -le $th1 ]; then
-    shutdown  # initiate shutdown (after a minute) before the blocking do_notify
+    systemctl poweroff --when=auto  # initiate shutdown (after a minute) before the blocking do_notify
     do_notify 1
 elif [ $batlevel -le $th2 ]; then
     do_notify 2
