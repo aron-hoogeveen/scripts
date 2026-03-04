@@ -1,34 +1,37 @@
-#!/bin/sh
+#!/bin/zsh
 
 ####################################################################################################
 # Battery Warning
 # By: Aron Hoogeveen
 #
-# This script is supposed to run every 5 minutes or so via a cronjob. The script shows warnings when
-# low battery levels have been reached and shuts down the system when a critically low battery level
-# has been reached.
+# This script is meant to be used in combination with a UDEV rule firing this script on battery level
+# change. Example:
+# 
+# > SUBSYSTEM=="power_supply" ATTR{status}=="Discharging" RUN+="/usr/bin/battery-notifier.sh $attr{capacity}"
 #
 # This script should be in a global folder with read/execution for all users, but write only for root user.
 #
-# TODO currently only works if you add this to the crontabs of all users who will use graphical sessions. Would be best if it runs on root or special user and then shows the notifications for all users that currently have a graphical session active. Then the laptop will shutoff also when noone is yet logged in.
+# TODO add more robust/generic method for displaying notifications on desktop-logged-in users.
+# TODO add notifications for non-desktop logged-in users.
 # TODO reset notifications when a charger is connected. Want the notification gone as soon as possible, therefore it might be nice to run this script via a UDEV rule and by using a switch `battery-manager.sh --clear-notification` or whatever.
 ####################################################################################################
 
 # check if commands exist
 if ! command -v notify-send &> /dev/null; then
     >&2 echo 'ERROR: notify-send is not an available command on your system.'
-    return
+    return 1
+fi
+
+# check number of arguments
+if ! [ "$#" -eq "1" ]; then
+    >&2 echo 'ERROR: script should be run with the current battery capacity as argument'
+    return 1
 fi
 
 # threshold level settings (percentage)
 th1=5
 th2=10
 th3=20
-
-# battery path
-batpath='/sys/class/power_supply/BAT1'
-charge_now="$batpath/charge_now"
-charge_full="$batpath/charge_full"
 
 # tmp file
 tmp_file_path=/tmp/battery-manager-notified
@@ -43,7 +46,7 @@ not_descr=(
 )
 
 # Calculate battery level (percentage)
-batlevel=$(echo "$(cat $charge_now) * 100 / $(cat $charge_full)" | bc)
+batlevel="$1"
 
 reset_tmp_file()
 {
@@ -66,10 +69,10 @@ do_notify()
 
         # special notification when shutting down
         if [ $1 -eq 1 ]; then
-            not_ret=$(notify-send --app-name="$not_title" --urgency="$not_urg" \
-                "$not_title" \
-                "${not_descr[$1-1]}" \
-                --action=cancel_shutdown="Cancel shutdown")
+            not_ret=$(sudo -u 'aron' XDG_RUNTIME_DIR=/run/user/$(id -u aron) WAYLAND_DISPLAY=wayland-1 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u aron)/bus DISPLAY=:0 notify-send --app-name="$not_title" --urgency="$not_urg" \
+		    "$not_title" \
+		    "${not_descr[$1-1]}" \
+		    --action=cancel_shutdown="Cancel shutdown")
 
             case $not_ret in
                 "cancel_shutdown")
@@ -82,8 +85,8 @@ do_notify()
                     ;;
             esac
         else
-            notify-send --app-name="$not_title" --urgency="$not_urg" \
-                "$not_title" \
+	    sudo -u 'aron' XDG_RUNTIME_DIR=/run/user/$(id -u aron) WAYLAND_DISPLAY=wayland-1 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u aron)/bus DISPLAY=:0 notify-send --app-name="$not_title" --urgency="$not_urg" \
+	        "$not_title" \
                 "${not_descr[$1-1]}"
         fi
     fi
@@ -100,4 +103,3 @@ elif [ $batlevel -le $th3 ]; then
 else
     reset_tmp_file  # otherwise the next time the warnings will not be triggered
 fi
-
